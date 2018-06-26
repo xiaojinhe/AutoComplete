@@ -1,3 +1,5 @@
+import java.io.IOException;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
@@ -9,23 +11,26 @@ import org.apache.hadoop.mapreduce.lib.db.DBOutputFormat;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 
-import java.io.IOException;
-
 
 public class Driver {
 
 	public static void main(String[] args) throws ClassNotFoundException, IOException, InterruptedException {
+
+		String inputDir = args[0];
+		String nGramLib = args[1];
+		String numberOfNGram = args[2];
+		String threshold = args[3];  //the word with frequency under threshold will be discarded
+		String numberOfFollowingWords = args[4];
 		//job1
 		Configuration conf1 = new Configuration();
 
-		//how to customize separator?
+		conf1.set("textinputformat.record.delimiter", ".");
+		conf1.set("noGram", numberOfNGram);
 
-		conf1.set("noGram", args[2]);
-		
-		Job job1 = Job.getInstance();
+		Job job1 = Job.getInstance(conf1);
 		job1.setJobName("NGram");
 		job1.setJarByClass(Driver.class);
-		
+
 		job1.setMapperClass(NGramLibraryBuilder.NGramMapper.class);
 		job1.setReducerClass(NGramLibraryBuilder.NGramReducer.class);
 		
@@ -35,29 +40,26 @@ public class Driver {
 		job1.setInputFormatClass(TextInputFormat.class);
 		job1.setOutputFormatClass(TextOutputFormat.class);
 		
-		TextInputFormat.setInputPaths(job1, new Path(args[0]));
-		TextOutputFormat.setOutputPath(job1, new Path(args[1]));
+		TextInputFormat.setInputPaths(job1, new Path(inputDir));
+		TextOutputFormat.setOutputPath(job1, new Path(nGramLib));
 		job1.waitForCompletion(true);
-		
-		//how to connect two jobs?
-		// last output is second input
 		
 		//2nd job
 		Configuration conf2 = new Configuration();
-		conf2.set("threashold", args[3]);
-		conf2.set("n", args[4]);
+		conf2.set("threshold", threshold);
+		conf2.set("n", numberOfFollowingWords);
 		
 		DBConfiguration.configureDB(conf2, 
 				"com.mysql.jdbc.Driver",
-				"jdbc:mysql://ip_address:port/test",
+				"jdbc:mysql://192.168.0.22:8889/test",
 				"root",
-				"password");
+				"root");
 		
 		Job job2 = Job.getInstance(conf2);
 		job2.setJobName("Model");
 		job2.setJarByClass(Driver.class);
 		
-		job2.addArchiveToClassPath(new Path("path_to_ur_connector"));
+		job2.addArchiveToClassPath(new Path("/mysql/mysql-connector-java-5.1.39-bin.jar"));
 		job2.setMapOutputKeyClass(Text.class);
 		job2.setMapOutputValueClass(Text.class);
 		job2.setOutputKeyClass(DBOutputWritable.class);
@@ -71,9 +73,7 @@ public class Driver {
 		
 		DBOutputFormat.setOutput(job2, "output", 
 				new String[] {"starting_phrase", "following_word", "count"});
-
 		TextInputFormat.setInputPaths(job2, args[1]);
 		job2.waitForCompletion(true);
 	}
-
 }
